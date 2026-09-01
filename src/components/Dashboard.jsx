@@ -5,8 +5,8 @@ import {
 } from "firebase/firestore";
 import Papa from "papaparse";
 import { 
-  LogOut, Plus, Trash2, Download, Search, Wallet, UserPlus, Menu, X, 
-  ArrowUpRight, ArrowDownLeft, AlertCircle, Users, FolderPlus
+  LogOut, Plus, Trash2, Download, Search, BookOpenCheck, UserPlus, Menu, X, 
+  ArrowUpRight, ArrowDownLeft, AlertCircle, Users, FolderPlus, FileText
 } from "lucide-react";
 
 export default function Dashboard({ user }) {
@@ -21,6 +21,7 @@ export default function Dashboard({ user }) {
   const [newMemberName, setNewMemberName] = useState("");
   const [members, setMembers] = useState([]);
   const [amount, setAmount] = useState("");
+  const [description, setDescription] = useState("");
   const [method, setMethod] = useState("cash");
   const [selectedMember, setSelectedMember] = useState("");
 
@@ -79,6 +80,11 @@ export default function Dashboard({ user }) {
       return;
     }
 
+    if (!description.trim()) {
+      setErrorMessage("Please provide a brief description for this transaction.");
+      return;
+    }
+
     if (type === "out") {
       if (!selectedMember) {
         setErrorMessage("Please select a member for withdrawal.");
@@ -100,11 +106,13 @@ export default function Dashboard({ user }) {
       type,
       method,
       amount: numAmount,
+      description: description.trim(),
       memberName: type === "out" ? selectedMember : null,
       createdAt: new Date().toISOString()
     });
 
     setAmount("");
+    setDescription("");
   };
 
   const handleAddMember = (e) => {
@@ -117,7 +125,15 @@ export default function Dashboard({ user }) {
   };
 
   const exportCSV = (data, filename) => {
-    const csv = Papa.unparse(data);
+    const csvData = data.map(t => ({
+      Type: t.type === "in" ? "Income" : "Withdrawal",
+      Method: t.method,
+      Amount: t.amount,
+      Description: t.description || "-",
+      Member: t.memberName || "-",
+      Date: new Date(t.createdAt).toLocaleDateString()
+    }));
+    const csv = Papa.unparse(csvData);
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
@@ -134,11 +150,12 @@ export default function Dashboard({ user }) {
       <header className="bg-black text-white sticky top-0 z-30 shadow-md">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex justify-between items-center">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-white text-black rounded-xl">
-              <Wallet size={20} />
+            <div className="p-2 bg-white text-black rounded-xl shadow-sm">
+              <BookOpenCheck size={20} />
             </div>
             <div>
-              <span className="font-bold text-lg tracking-tight block">CashRecord</span>
+              <span className="font-bold text-lg tracking-tight block text-white">CashRecord</span>
+              <span className="text-[10px] text-zinc-400 -mt-1 block font-mono">CASHBOOK LEDGER</span>
             </div>
           </div>
 
@@ -247,7 +264,6 @@ export default function Dashboard({ user }) {
 
             {/* Summary Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              {/* Total Balance Card (Black) */}
               <div className="bg-black text-white p-5 rounded-2xl shadow-md">
                 <div className="text-xs font-bold uppercase tracking-wider text-zinc-400">Total Net Balance</div>
                 <p className="text-3xl font-black mt-2">${totalRemaining.toFixed(2)}</p>
@@ -257,7 +273,6 @@ export default function Dashboard({ user }) {
                 </div>
               </div>
 
-              {/* Incoming Funds Card (Green accent) */}
               <div className="bg-white border-2 border-emerald-500/20 p-5 rounded-2xl shadow-sm">
                 <div className="flex justify-between items-center text-emerald-600">
                   <span className="text-xs font-bold uppercase tracking-wider">Physical Cash</span>
@@ -270,7 +285,6 @@ export default function Dashboard({ user }) {
                 </div>
               </div>
 
-              {/* Outgoing Funds Card (Red accent) */}
               <div className="bg-white border-2 border-rose-500/20 p-5 rounded-2xl shadow-sm">
                 <div className="flex justify-between items-center text-rose-600">
                   <span className="text-xs font-bold uppercase tracking-wider">Total Outgoing</span>
@@ -289,18 +303,37 @@ export default function Dashboard({ user }) {
               <div className="space-y-4">
                 <h3 className="font-black text-sm uppercase tracking-wider text-black">Record Transaction</h3>
                 
-                <div>
-                  <label className="block text-xs font-bold text-zinc-400 mb-1 uppercase">Amount ($)</label>
-                  <input 
-                    type="number" 
-                    placeholder="0.00" 
-                    value={amount} 
-                    onChange={(e) => {
-                      setAmount(e.target.value);
-                      if (errorMessage) setErrorMessage("");
-                    }}
-                    className="w-full border border-zinc-200 p-3 rounded-xl text-lg font-bold text-black focus:ring-2 focus:ring-black focus:outline-none bg-zinc-50/50" 
-                  />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-zinc-400 mb-1 uppercase">Amount ($)</label>
+                    <input 
+                      type="number" 
+                      placeholder="0.00" 
+                      value={amount} 
+                      onChange={(e) => {
+                        setAmount(e.target.value);
+                        if (errorMessage) setErrorMessage("");
+                      }}
+                      className="w-full border border-zinc-200 p-3 rounded-xl text-lg font-bold text-black focus:ring-2 focus:ring-black focus:outline-none bg-zinc-50/50" 
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-zinc-400 mb-1 uppercase">Description / Note</label>
+                    <div className="relative">
+                      <FileText size={16} className="absolute left-3 top-3.5 text-zinc-400" />
+                      <input 
+                        type="text" 
+                        placeholder="e.g., Office rent, advance" 
+                        value={description} 
+                        onChange={(e) => {
+                          setDescription(e.target.value);
+                          if (errorMessage) setErrorMessage("");
+                        }}
+                        className="w-full border border-zinc-200 pl-9 p-3 rounded-xl text-sm font-semibold text-black focus:ring-2 focus:ring-black focus:outline-none bg-zinc-50/50" 
+                      />
+                    </div>
+                  </div>
                 </div>
                 
                 <div>
@@ -336,13 +369,13 @@ export default function Dashboard({ user }) {
                     onClick={() => handleTransaction("in")} 
                     className="w-full bg-emerald-600 text-white py-3 rounded-xl font-bold text-xs tracking-wider uppercase hover:bg-emerald-700 active:scale-95 transition shadow-sm"
                   >
-                    + Add Funds (Green)
+                    + Add Funds
                   </button>
                   <button 
                     onClick={() => handleTransaction("out")} 
                     className="w-full bg-rose-600 text-white py-3 rounded-xl font-bold text-xs tracking-wider uppercase hover:bg-rose-700 active:scale-95 transition shadow-sm"
                   >
-                    - Withdraw (Red)
+                    - Withdraw
                   </button>
                 </div>
               </div>
@@ -367,7 +400,7 @@ export default function Dashboard({ user }) {
                   value={selectedMember} 
                   onChange={(e) => setSelectedMember(e.target.value)}
                 >
-                  <option value="">-- Choose Member --</option>
+                  <option value="">-- Choose Recipient Member --</option>
                   {filteredMembers.map((m, idx) => (
                     <option key={idx} value={m}>{m}</option>
                   ))}
@@ -387,12 +420,13 @@ export default function Dashboard({ user }) {
               </div>
               
               <div className="overflow-x-auto -mx-5 sm:mx-0">
-                <table className="w-full text-left border-collapse min-w-[550px]">
+                <table className="w-full text-left border-collapse min-w-[650px]">
                   <thead>
                     <tr className="bg-zinc-100 text-zinc-500 uppercase text-[10px] font-black tracking-wider border-b border-zinc-200">
                       <th className="p-3">Type</th>
                       <th className="p-3">Method</th>
                       <th className="p-3">Amount</th>
+                      <th className="p-3">Description</th>
                       <th className="p-3">Member</th>
                       <th className="p-3">Date</th>
                     </tr>
@@ -400,7 +434,7 @@ export default function Dashboard({ user }) {
                   <tbody className="divide-y divide-zinc-100 text-xs font-medium">
                     {transactions.length === 0 ? (
                       <tr>
-                        <td colSpan="5" className="p-6 text-center text-zinc-400 font-bold">No transactions logged.</td>
+                        <td colSpan="6" className="p-6 text-center text-zinc-400 font-bold">No transactions logged.</td>
                       </tr>
                     ) : (
                       transactions.map(t => (
@@ -418,6 +452,7 @@ export default function Dashboard({ user }) {
                           <td className={`p-3 font-extrabold ${t.type === "in" ? "text-emerald-600" : "text-rose-600"}`}>
                             {t.type === "in" ? "+" : "-"}${t.amount.toFixed(2)}
                           </td>
+                          <td className="p-3 text-zinc-800 font-medium">{t.description || "-"}</td>
                           <td className="p-3 text-zinc-800 font-semibold">{t.memberName || "-"}</td>
                           <td className="p-3 text-[10px] text-zinc-400 font-mono">{new Date(t.createdAt).toLocaleDateString()}</td>
                         </tr>
