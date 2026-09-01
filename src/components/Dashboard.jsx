@@ -6,7 +6,7 @@ import {
 import Papa from "papaparse";
 import { 
   LogOut, Plus, Trash2, Download, Search, BookOpenCheck, UserPlus, Menu, X, 
-  ArrowUpRight, ArrowDownLeft, AlertCircle, Users, FolderPlus, FileText
+  ArrowUpRight, ArrowDownLeft, AlertCircle, Users, FolderPlus, FileText, LayoutDashboard, UserCheck
 } from "lucide-react";
 
 export default function Dashboard({ user }) {
@@ -16,6 +16,7 @@ export default function Dashboard({ user }) {
   const [newProjectName, setNewProjectName] = useState("");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [activeTab, setActiveTab] = useState("dashboard"); // "dashboard" or "members"
   
   const [memberSearch, setMemberSearch] = useState("");
   const [newMemberName, setNewMemberName] = useState("");
@@ -24,6 +25,9 @@ export default function Dashboard({ user }) {
   const [description, setDescription] = useState("");
   const [method, setMethod] = useState("cash");
   const [selectedMember, setSelectedMember] = useState("");
+  
+  // Dedicated Member View State
+  const [viewedMember, setViewedMember] = useState("");
 
   const username = user.email.split("@")[0];
 
@@ -45,6 +49,7 @@ export default function Dashboard({ user }) {
       setTransactions(txs);
       const uniqueMembers = [...new Set(txs.map(t => t.memberName).filter(Boolean))];
       setMembers(uniqueMembers);
+      if (uniqueMembers.length > 0 && !viewedMember) setViewedMember(uniqueMembers[0]);
     });
     return () => unsubscribe();
   }, [selectedProject]);
@@ -91,11 +96,10 @@ export default function Dashboard({ user }) {
         return;
       }
 
-      // CONSTRAINT CHECK: Prevent over-withdrawing past available balance
       const currentAvailable = method === "cash" ? remainingCash : remainingOnline;
       if (numAmount > currentAvailable) {
         setErrorMessage(
-          `Withdrawal failed! Requested amount ($${numAmount.toFixed(2)}) exceeds remaining ${method.toUpperCase()} balance ($${currentAvailable.toFixed(2)}).`
+          `Withdrawal failed! Requested amount (₹${numAmount.toFixed(2)}) exceeds remaining ${method.toUpperCase()} balance (₹${currentAvailable.toFixed(2)}).`
         );
         return;
       }
@@ -120,6 +124,7 @@ export default function Dashboard({ user }) {
     if (newMemberName && !members.includes(newMemberName)) {
       setMembers([...members, newMemberName]);
       setSelectedMember(newMemberName);
+      setViewedMember(newMemberName);
       setNewMemberName("");
     }
   };
@@ -143,6 +148,10 @@ export default function Dashboard({ user }) {
   };
 
   const filteredMembers = members.filter(m => m.toLowerCase().includes(memberSearch.toLowerCase()));
+
+  // Transactions filtered for the viewed member page
+  const memberTransactions = transactions.filter(t => t.memberName === viewedMember);
+  const memberTotalWithdrawn = memberTransactions.reduce((sum, t) => sum + t.amount, 0);
 
   return (
     <div className="min-h-screen bg-zinc-100 text-zinc-900 font-sans pb-16">
@@ -226,12 +235,37 @@ export default function Dashboard({ user }) {
 
         {selectedProject ? (
           <>
-            {/* Project Header */}
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-white p-5 rounded-2xl border border-zinc-200 shadow-sm">
+            {/* Project Header + View Switcher */}
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-5 rounded-2xl border border-zinc-200 shadow-sm">
               <div>
                 <span className="text-xs font-bold uppercase tracking-wider text-zinc-400">Active Record</span>
                 <h2 className="text-2xl font-black text-black tracking-tight">{selectedProject.name}</h2>
               </div>
+
+              {/* View Switcher Tabs */}
+              <div className="flex bg-zinc-100 p-1 rounded-xl w-full sm:w-auto">
+                <button
+                  onClick={() => setActiveTab("dashboard")}
+                  className={`flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition ${
+                    activeTab === "dashboard"
+                      ? "bg-black text-white shadow-sm"
+                      : "text-zinc-600 hover:text-black"
+                  }`}
+                >
+                  <LayoutDashboard size={15} /> Overview
+                </button>
+                <button
+                  onClick={() => setActiveTab("members")}
+                  className={`flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition ${
+                    activeTab === "members"
+                      ? "bg-black text-white shadow-sm"
+                      : "text-zinc-600 hover:text-black"
+                  }`}
+                >
+                  <UserCheck size={15} /> Member Ledger
+                </button>
+              </div>
+
               <div className="flex w-full sm:w-auto gap-2">
                 <button 
                   onClick={() => exportCSV(transactions, `${selectedProject.name}_Transactions`)}
@@ -262,245 +296,337 @@ export default function Dashboard({ user }) {
               </div>
             )}
 
-            {/* Summary Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className="bg-black text-white p-5 rounded-2xl shadow-md">
-                <div className="text-xs font-bold uppercase tracking-wider text-zinc-400">Total Net Balance</div>
-                <p className="text-3xl font-black mt-2">${totalRemaining.toFixed(2)}</p>
-                <div className="mt-3 pt-3 border-t border-zinc-800 text-xs text-zinc-400 flex justify-between font-mono">
-                  <span>Cash: ${remainingCash.toFixed(2)}</span>
-                  <span>Online: ${remainingOnline.toFixed(2)}</span>
-                </div>
-              </div>
-
-              <div className="bg-white border-2 border-emerald-500/20 p-5 rounded-2xl shadow-sm">
-                <div className="flex justify-between items-center text-emerald-600">
-                  <span className="text-xs font-bold uppercase tracking-wider">Physical Cash</span>
-                  <ArrowDownLeft size={18} />
-                </div>
-                <p className="text-3xl font-black text-black mt-2">${remainingCash.toFixed(2)}</p>
-                <div className="mt-3 pt-3 border-t border-zinc-100 text-xs font-medium flex justify-between">
-                  <span className="text-emerald-600 font-bold">In: +${cashIn.toFixed(2)}</span>
-                  <span className="text-rose-600 font-bold">Out: -${cashOut.toFixed(2)}</span>
-                </div>
-              </div>
-
-              <div className="bg-white border-2 border-rose-500/20 p-5 rounded-2xl shadow-sm">
-                <div className="flex justify-between items-center text-rose-600">
-                  <span className="text-xs font-bold uppercase tracking-wider">Total Outgoing</span>
-                  <ArrowUpRight size={18} />
-                </div>
-                <p className="text-3xl font-black text-black mt-2">${totalOut.toFixed(2)}</p>
-                <div className="mt-3 pt-3 border-t border-zinc-100 text-xs text-zinc-500 font-medium flex justify-between">
-                  <span>Physical: ${cashOut.toFixed(2)}</span>
-                  <span>Online: ${onlineOut.toFixed(2)}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Transaction Controls */}
-            <div className="bg-white p-5 sm:p-6 rounded-2xl border border-zinc-200 shadow-sm grid grid-cols-1 md:grid-cols-2 gap-8">
-              <div className="space-y-4">
-                <h3 className="font-black text-sm uppercase tracking-wider text-black">Record Transaction</h3>
-                
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-bold text-zinc-400 mb-1 uppercase">Amount ($)</label>
-                    <input 
-                      type="number" 
-                      placeholder="0.00" 
-                      value={amount} 
-                      onChange={(e) => {
-                        setAmount(e.target.value);
-                        if (errorMessage) setErrorMessage("");
-                      }}
-                      className="w-full border border-zinc-200 p-3 rounded-xl text-lg font-bold text-black focus:ring-2 focus:ring-black focus:outline-none bg-zinc-50/50" 
-                    />
+            {/* PAGE 1: OVERVIEW DASHBOARD */}
+            {activeTab === "dashboard" && (
+              <>
+                {/* Summary Cards */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="bg-black text-white p-5 rounded-2xl shadow-md">
+                    <div className="text-xs font-bold uppercase tracking-wider text-zinc-400">Total Net Balance</div>
+                    <p className="text-3xl font-black mt-2">₹{totalRemaining.toFixed(2)}</p>
+                    <div className="mt-3 pt-3 border-t border-zinc-800 text-xs text-zinc-400 flex justify-between font-mono">
+                      <span>Cash: ₹{remainingCash.toFixed(2)}</span>
+                      <span>Online: ₹{remainingOnline.toFixed(2)}</span>
+                    </div>
                   </div>
 
-                  <div>
-                    <label className="block text-xs font-bold text-zinc-400 mb-1 uppercase">Description / Note</label>
-                    <div className="relative">
-                      <FileText size={16} className="absolute left-3 top-3.5 text-zinc-400" />
-                      <input 
-                        type="text" 
-                        placeholder="e.g., Office rent, advance" 
-                        value={description} 
-                        onChange={(e) => {
-                          setDescription(e.target.value);
-                          if (errorMessage) setErrorMessage("");
-                        }}
-                        className="w-full border border-zinc-200 pl-9 p-3 rounded-xl text-sm font-semibold text-black focus:ring-2 focus:ring-black focus:outline-none bg-zinc-50/50" 
-                      />
+                  <div className="bg-white border-2 border-emerald-500/20 p-5 rounded-2xl shadow-sm">
+                    <div className="flex justify-between items-center text-emerald-600">
+                      <span className="text-xs font-bold uppercase tracking-wider">Physical Cash</span>
+                      <ArrowDownLeft size={18} />
+                    </div>
+                    <p className="text-3xl font-black text-black mt-2">₹{remainingCash.toFixed(2)}</p>
+                    <div className="mt-3 pt-3 border-t border-zinc-100 text-xs font-medium flex justify-between">
+                      <span className="text-emerald-600 font-bold">In: +₹{cashIn.toFixed(2)}</span>
+                      <span className="text-rose-600 font-bold">Out: -₹{cashOut.toFixed(2)}</span>
+                    </div>
+                  </div>
+
+                  <div className="bg-white border-2 border-rose-500/20 p-5 rounded-2xl shadow-sm">
+                    <div className="flex justify-between items-center text-rose-600">
+                      <span className="text-xs font-bold uppercase tracking-wider">Total Outgoing</span>
+                      <ArrowUpRight size={18} />
+                    </div>
+                    <p className="text-3xl font-black text-black mt-2">₹{totalOut.toFixed(2)}</p>
+                    <div className="mt-3 pt-3 border-t border-zinc-100 text-xs text-zinc-500 font-medium flex justify-between">
+                      <span>Physical: ₹{cashOut.toFixed(2)}</span>
+                      <span>Online: ₹{onlineOut.toFixed(2)}</span>
                     </div>
                   </div>
                 </div>
-                
-                <div>
-                  <label className="block text-xs font-bold text-zinc-400 mb-1.5 uppercase">Payment Method</label>
-                  <div className="grid grid-cols-2 gap-3">
-                    <button
-                      type="button"
-                      onClick={() => setMethod("cash")}
-                      className={`py-2.5 rounded-xl font-bold text-xs border transition ${
-                        method === "cash" 
-                          ? "bg-black text-white border-black" 
-                          : "bg-white text-zinc-600 border-zinc-200 hover:bg-zinc-50"
-                      }`}
+
+                {/* Transaction Controls */}
+                <div className="bg-white p-5 sm:p-6 rounded-2xl border border-zinc-200 shadow-sm grid grid-cols-1 md:grid-cols-2 gap-8">
+                  <div className="space-y-4">
+                    <h3 className="font-black text-sm uppercase tracking-wider text-black">Record Transaction</h3>
+                    
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-bold text-zinc-400 mb-1 uppercase">Amount (₹)</label>
+                        <input 
+                          type="number" 
+                          placeholder="0.00" 
+                          value={amount} 
+                          onChange={(e) => {
+                            setAmount(e.target.value);
+                            if (errorMessage) setErrorMessage("");
+                          }}
+                          className="w-full border border-zinc-200 p-3 rounded-xl text-lg font-bold text-black focus:ring-2 focus:ring-black focus:outline-none bg-zinc-50/50" 
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-zinc-400 mb-1 uppercase">Description / Note</label>
+                        <div className="relative">
+                          <FileText size={16} className="absolute left-3 top-3.5 text-zinc-400" />
+                          <input 
+                            type="text" 
+                            placeholder="e.g., Office rent, advance" 
+                            value={description} 
+                            onChange={(e) => {
+                              setDescription(e.target.value);
+                              if (errorMessage) setErrorMessage("");
+                            }}
+                            className="w-full border border-zinc-200 pl-9 p-3 rounded-xl text-sm font-semibold text-black focus:ring-2 focus:ring-black focus:outline-none bg-zinc-50/50" 
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div>
+                      <label className="block text-xs font-bold text-zinc-400 mb-1.5 uppercase">Payment Method</label>
+                      <div className="grid grid-cols-2 gap-3">
+                        <button
+                          type="button"
+                          onClick={() => setMethod("cash")}
+                          className={`py-2.5 rounded-xl font-bold text-xs border transition ${
+                            method === "cash" 
+                              ? "bg-black text-white border-black" 
+                              : "bg-white text-zinc-600 border-zinc-200 hover:bg-zinc-50"
+                          }`}
+                        >
+                          Physical Cash (₹{remainingCash.toFixed(2)})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setMethod("online")}
+                          className={`py-2.5 rounded-xl font-bold text-xs border transition ${
+                            method === "online" 
+                              ? "bg-black text-white border-black" 
+                              : "bg-white text-zinc-600 border-zinc-200 hover:bg-zinc-50"
+                          }`}
+                        >
+                          Online Transfer (₹{remainingOnline.toFixed(2)})
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                      <button 
+                        onClick={() => handleTransaction("in")} 
+                        className="w-full bg-emerald-600 text-white py-3 rounded-xl font-bold text-xs tracking-wider uppercase hover:bg-emerald-700 active:scale-95 transition shadow-sm"
+                      >
+                        + Add Funds
+                      </button>
+                      <button 
+                        onClick={() => handleTransaction("out")} 
+                        className="w-full bg-rose-600 text-white py-3 rounded-xl font-bold text-xs tracking-wider uppercase hover:bg-rose-700 active:scale-95 transition shadow-sm"
+                      >
+                        - Withdraw
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Member Selection */}
+                  <div className="space-y-4">
+                    <h3 className="font-black text-sm uppercase tracking-wider text-black">Member Selection (Withdrawals)</h3>
+                    
+                    <div className="relative">
+                      <Search className="absolute left-3 top-3.5 text-zinc-400" size={16} />
+                      <input 
+                        type="text" 
+                        placeholder="Search member..." 
+                        value={memberSearch}
+                        onChange={(e) => setMemberSearch(e.target.value)}
+                        className="w-full border border-zinc-200 pl-10 p-3 rounded-xl text-xs font-medium focus:ring-2 focus:ring-black focus:outline-none bg-zinc-50/50"
+                      />
+                    </div>
+
+                    <select 
+                      className="w-full border border-zinc-200 p-3 rounded-xl text-xs font-bold bg-white focus:ring-2 focus:ring-black focus:outline-none shadow-sm cursor-pointer"
+                      value={selectedMember} 
+                      onChange={(e) => setSelectedMember(e.target.value)}
                     >
-                      Physical Cash (${remainingCash.toFixed(2)})
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setMethod("online")}
-                      className={`py-2.5 rounded-xl font-bold text-xs border transition ${
-                        method === "online" 
-                          ? "bg-black text-white border-black" 
-                          : "bg-white text-zinc-600 border-zinc-200 hover:bg-zinc-50"
-                      }`}
-                    >
-                      Online Transfer (${remainingOnline.toFixed(2)})
-                    </button>
+                      <option value="">-- Choose Recipient Member --</option>
+                      {filteredMembers.map((m, idx) => (
+                        <option key={idx} value={m}>{m}</option>
+                      ))}
+                    </select>
+
+                    <div className="p-3 bg-zinc-50 border border-zinc-200 rounded-xl text-xs text-zinc-500 font-medium">
+                      Constraint Check Active: Withdrawals cannot exceed available <strong>{method.toUpperCase()}</strong> balance.
+                    </div>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
-                  <button 
-                    onClick={() => handleTransaction("in")} 
-                    className="w-full bg-emerald-600 text-white py-3 rounded-xl font-bold text-xs tracking-wider uppercase hover:bg-emerald-700 active:scale-95 transition shadow-sm"
-                  >
-                    + Add Funds
-                  </button>
-                  <button 
-                    onClick={() => handleTransaction("out")} 
-                    className="w-full bg-rose-600 text-white py-3 rounded-xl font-bold text-xs tracking-wider uppercase hover:bg-rose-700 active:scale-95 transition shadow-sm"
-                  >
-                    - Withdraw
-                  </button>
-                </div>
-              </div>
-
-              {/* Member Selection */}
-              <div className="space-y-4">
-                <h3 className="font-black text-sm uppercase tracking-wider text-black">Member Selection (Withdrawals)</h3>
-                
-                <div className="relative">
-                  <Search className="absolute left-3 top-3.5 text-zinc-400" size={16} />
-                  <input 
-                    type="text" 
-                    placeholder="Search member..." 
-                    value={memberSearch}
-                    onChange={(e) => setMemberSearch(e.target.value)}
-                    className="w-full border border-zinc-200 pl-10 p-3 rounded-xl text-xs font-medium focus:ring-2 focus:ring-black focus:outline-none bg-zinc-50/50"
-                  />
-                </div>
-
-                <select 
-                  className="w-full border border-zinc-200 p-3 rounded-xl text-xs font-bold bg-white focus:ring-2 focus:ring-black focus:outline-none shadow-sm cursor-pointer"
-                  value={selectedMember} 
-                  onChange={(e) => setSelectedMember(e.target.value)}
-                >
-                  <option value="">-- Choose Recipient Member --</option>
-                  {filteredMembers.map((m, idx) => (
-                    <option key={idx} value={m}>{m}</option>
-                  ))}
-                </select>
-
-                <div className="p-3 bg-zinc-50 border border-zinc-200 rounded-xl text-xs text-zinc-500 font-medium">
-                  Constraint Check Active: Withdrawals cannot exceed available <strong>{method.toUpperCase()}</strong> balance.
-                </div>
-              </div>
-            </div>
-
-            {/* Transaction Log Table */}
-            <div className="bg-white p-5 sm:p-6 rounded-2xl border border-zinc-200 shadow-sm space-y-4">
-              <div className="flex justify-between items-center">
-                <h3 className="font-black text-sm uppercase tracking-wider text-black">Transaction Log</h3>
-                <span className="text-xs bg-black text-white font-bold px-2.5 py-1 rounded-full">{transactions.length} Entries</span>
-              </div>
-              
-              <div className="overflow-x-auto -mx-5 sm:mx-0">
-                <table className="w-full text-left border-collapse min-w-[650px]">
-                  <thead>
-                    <tr className="bg-zinc-100 text-zinc-500 uppercase text-[10px] font-black tracking-wider border-b border-zinc-200">
-                      <th className="p-3">Type</th>
-                      <th className="p-3">Method</th>
-                      <th className="p-3">Amount</th>
-                      <th className="p-3">Description</th>
-                      <th className="p-3">Member</th>
-                      <th className="p-3">Date</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-zinc-100 text-xs font-medium">
-                    {transactions.length === 0 ? (
-                      <tr>
-                        <td colSpan="6" className="p-6 text-center text-zinc-400 font-bold">No transactions logged.</td>
-                      </tr>
-                    ) : (
-                      transactions.map(t => (
-                        <tr key={t.id} className="hover:bg-zinc-50 transition">
-                          <td className="p-3">
-                            <span className={`px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider ${
-                              t.type === "in" 
-                                ? "bg-emerald-100 text-emerald-700" 
-                                : "bg-rose-100 text-rose-700"
-                            }`}>
-                              {t.type === "in" ? "+ INCOME" : "- OUTGOING"}
-                            </span>
-                          </td>
-                          <td className="p-3 capitalize font-bold text-zinc-700">{t.method}</td>
-                          <td className={`p-3 font-extrabold ${t.type === "in" ? "text-emerald-600" : "text-rose-600"}`}>
-                            {t.type === "in" ? "+" : "-"}${t.amount.toFixed(2)}
-                          </td>
-                          <td className="p-3 text-zinc-800 font-medium">{t.description || "-"}</td>
-                          <td className="p-3 text-zinc-800 font-semibold">{t.memberName || "-"}</td>
-                          <td className="p-3 text-[10px] text-zinc-400 font-mono">{new Date(t.createdAt).toLocaleDateString()}</td>
+                {/* Transaction Log Table */}
+                <div className="bg-white p-5 sm:p-6 rounded-2xl border border-zinc-200 shadow-sm space-y-4">
+                  <div className="flex justify-between items-center">
+                    <h3 className="font-black text-sm uppercase tracking-wider text-black">Transaction Log</h3>
+                    <span className="text-xs bg-black text-white font-bold px-2.5 py-1 rounded-full">{transactions.length} Entries</span>
+                  </div>
+                  
+                  <div className="overflow-x-auto -mx-5 sm:mx-0">
+                    <table className="w-full text-left border-collapse min-w-[650px]">
+                      <thead>
+                        <tr className="bg-zinc-100 text-zinc-500 uppercase text-[10px] font-black tracking-wider border-b border-zinc-200">
+                          <th className="p-3">Type</th>
+                          <th className="p-3">Method</th>
+                          <th className="p-3">Amount</th>
+                          <th className="p-3">Description</th>
+                          <th className="p-3">Member</th>
+                          <th className="p-3">Date</th>
                         </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {/* Member Management */}
-            <div className="bg-white p-5 sm:p-6 rounded-2xl border border-zinc-200 shadow-sm space-y-4">
-              <div className="flex items-center gap-2">
-                <Users size={16} className="text-black" />
-                <h3 className="font-black text-sm uppercase tracking-wider text-black">Project Members</h3>
-              </div>
-              
-              <form onSubmit={handleAddMember} className="flex gap-2">
-                <input 
-                  type="text" 
-                  placeholder="New member name..." 
-                  value={newMemberName}
-                  onChange={(e) => setNewMemberName(e.target.value)}
-                  className="flex-1 border border-zinc-200 px-3 py-2 rounded-xl text-xs font-medium focus:ring-2 focus:ring-black focus:outline-none bg-zinc-50/50" 
-                />
-                <button className="bg-black text-white px-4 py-2 rounded-xl font-bold text-xs flex items-center gap-1 hover:bg-zinc-800 transition">
-                  <UserPlus size={14} /> Add Member
-                </button>
-              </form>
-
-              <div className="flex flex-wrap gap-2 pt-1">
-                {members.map((m, idx) => (
-                  <div key={idx} className="flex items-center gap-2 border border-zinc-200 bg-zinc-50 px-3 py-1.5 rounded-full text-xs font-bold text-zinc-800">
-                    <span>{m}</span>
-                    <button 
-                      title="Export Member Logs"
-                      onClick={() => {
-                        const memberTxs = transactions.filter(t => t.memberName === m);
-                        exportCSV(memberTxs, `${m}_Transactions`);
-                      }}
-                      className="text-zinc-400 hover:text-black transition"
-                    >
-                      <Download size={12} />
-                    </button>
+                      </thead>
+                      <tbody className="divide-y divide-zinc-100 text-xs font-medium">
+                        {transactions.length === 0 ? (
+                          <tr>
+                            <td colSpan="6" className="p-6 text-center text-zinc-400 font-bold">No transactions logged.</td>
+                          </tr>
+                        ) : (
+                          transactions.map(t => (
+                            <tr key={t.id} className="hover:bg-zinc-50 transition">
+                              <td className="p-3">
+                                <span className={`px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider ${
+                                  t.type === "in" 
+                                    ? "bg-emerald-100 text-emerald-700" 
+                                    : "bg-rose-100 text-rose-700"
+                                }`}>
+                                  {t.type === "in" ? "+ INCOME" : "- OUTGOING"}
+                                </span>
+                              </td>
+                              <td className="p-3 capitalize font-bold text-zinc-700">{t.method}</td>
+                              <td className={`p-3 font-extrabold ${t.type === "in" ? "text-emerald-600" : "text-rose-600"}`}>
+                                {t.type === "in" ? "+" : "-"}₹{t.amount.toFixed(2)}
+                              </td>
+                              <td className="p-3 text-zinc-800 font-medium">{t.description || "-"}</td>
+                              <td className="p-3 text-zinc-800 font-semibold">{t.memberName || "-"}</td>
+                              <td className="p-3 text-[10px] text-zinc-400 font-mono">{new Date(t.createdAt).toLocaleDateString()}</td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
                   </div>
-                ))}
+                </div>
+
+                {/* Member Management Quick Add */}
+                <div className="bg-white p-5 sm:p-6 rounded-2xl border border-zinc-200 shadow-sm space-y-4">
+                  <div className="flex items-center gap-2">
+                    <Users size={16} className="text-black" />
+                    <h3 className="font-black text-sm uppercase tracking-wider text-black">Project Members</h3>
+                  </div>
+                  
+                  <form onSubmit={handleAddMember} className="flex gap-2">
+                    <input 
+                      type="text" 
+                      placeholder="New member name..." 
+                      value={newMemberName}
+                      onChange={(e) => setNewMemberName(e.target.value)}
+                      className="flex-1 border border-zinc-200 px-3 py-2 rounded-xl text-xs font-medium focus:ring-2 focus:ring-black focus:outline-none bg-zinc-50/50" 
+                    />
+                    <button className="bg-black text-white px-4 py-2 rounded-xl font-bold text-xs flex items-center gap-1 hover:bg-zinc-800 transition">
+                      <UserPlus size={14} /> Add Member
+                    </button>
+                  </form>
+                </div>
+              </>
+            )}
+
+            {/* PAGE 2: DEDICATED MEMBER TRANSACTION LEDGER */}
+            {activeTab === "members" && (
+              <div className="space-y-6">
+                
+                {/* Member Selector Bar */}
+                <div className="bg-white p-5 rounded-2xl border border-zinc-200 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                  <div className="flex-1 w-full sm:w-auto">
+                    <label className="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1">Select Member</label>
+                    <select
+                      value={viewedMember}
+                      onChange={(e) => setViewedMember(e.target.value)}
+                      className="w-full sm:w-72 border border-zinc-200 p-3 rounded-xl text-sm font-bold bg-white focus:ring-2 focus:ring-black focus:outline-none shadow-sm cursor-pointer"
+                    >
+                      {members.length === 0 ? (
+                        <option value="">No members registered</option>
+                      ) : (
+                        members.map((m, idx) => (
+                          <option key={idx} value={m}>{m}</option>
+                        ))
+                      )}
+                    </select>
+                  </div>
+
+                  {viewedMember && (
+                    <button
+                      onClick={() => exportCSV(memberTransactions, `${viewedMember}_Withdrawal_Ledger`)}
+                      className="w-full sm:w-auto bg-emerald-600 text-white px-5 py-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 hover:bg-emerald-700 transition shadow-sm"
+                    >
+                      <Download size={16} /> Export {viewedMember}'s CSV Report
+                    </button>
+                  )}
+                </div>
+
+                {viewedMember ? (
+                  <>
+                    {/* Member Stats Card */}
+                    <div className="bg-white p-6 rounded-2xl border border-zinc-200 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                      <div>
+                        <span className="text-xs font-bold uppercase tracking-wider text-zinc-400">Member Overview</span>
+                        <h3 className="text-2xl font-black text-black">{viewedMember}</h3>
+                      </div>
+                      <div className="bg-zinc-50 border border-zinc-200 p-4 rounded-xl text-right w-full sm:w-auto">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Total Funds Withdrawn</span>
+                        <p className="text-2xl font-black text-rose-600">₹{memberTotalWithdrawn.toFixed(2)}</p>
+                      </div>
+                    </div>
+
+                    {/* Member Specific Transaction Table */}
+                    <div className="bg-white p-5 sm:p-6 rounded-2xl border border-zinc-200 shadow-sm space-y-4">
+                      <div className="flex justify-between items-center">
+                        <h4 className="font-black text-sm uppercase tracking-wider text-black">
+                          Withdrawal Records ({memberTransactions.length})
+                        </h4>
+                      </div>
+
+                      <div className="overflow-x-auto -mx-5 sm:mx-0">
+                        <table className="w-full text-left border-collapse min-w-[600px]">
+                          <thead>
+                            <tr className="bg-zinc-100 text-zinc-500 uppercase text-[10px] font-black tracking-wider border-b border-zinc-200">
+                              <th className="p-3">Type</th>
+                              <th className="p-3">Method</th>
+                              <th className="p-3">Amount</th>
+                              <th className="p-3">Description / Reason</th>
+                              <th className="p-3">Date</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-zinc-100 text-xs font-medium">
+                            {memberTransactions.length === 0 ? (
+                              <tr>
+                                <td colSpan="5" className="p-6 text-center text-zinc-400 font-bold">
+                                  No withdrawals logged for {viewedMember}.
+                                </td>
+                              </tr>
+                            ) : (
+                              memberTransactions.map(t => (
+                                <tr key={t.id} className="hover:bg-zinc-50 transition">
+                                  <td className="p-3">
+                                    <span className="px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider bg-rose-100 text-rose-700">
+                                      - WITHDRAWAL
+                                    </span>
+                                  </td>
+                                  <td className="p-3 capitalize font-bold text-zinc-700">{t.method}</td>
+                                  <td className="p-3 font-extrabold text-rose-600">
+                                    -₹{t.amount.toFixed(2)}
+                                  </td>
+                                  <td className="p-3 text-zinc-800 font-medium">{t.description || "-"}</td>
+                                  <td className="p-3 text-[10px] text-zinc-400 font-mono">
+                                    {new Date(t.createdAt).toLocaleDateString()}
+                                  </td>
+                                </tr>
+                              ))
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-center py-16 bg-white rounded-2xl border border-dashed border-zinc-300">
+                    <p className="text-zinc-400 font-medium text-xs">Add or select a member above to view their dedicated ledger.</p>
+                  </div>
+                )}
               </div>
-            </div>
+            )}
           </>
         ) : (
           <div className="text-center py-20 bg-white rounded-2xl border border-dashed border-zinc-300">
