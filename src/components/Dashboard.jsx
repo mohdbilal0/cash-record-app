@@ -4,7 +4,10 @@ import {
   collection, addDoc, query, where, onSnapshot, doc, deleteDoc, serverTimestamp 
 } from "firebase/firestore";
 import Papa from "papaparse";
-import { LogOut, Plus, Trash2, Download, Search, Wallet, UserPlus, Menu, X } from "lucide-react";
+import { 
+  LogOut, Plus, Trash2, Download, Search, Wallet, UserPlus, Menu, X, 
+  ArrowUpRight, ArrowDownLeft, AlertCircle, Users, FolderPlus
+} from "lucide-react";
 
 export default function Dashboard({ user }) {
   const [projects, setProjects] = useState([]);
@@ -12,6 +15,7 @@ export default function Dashboard({ user }) {
   const [transactions, setTransactions] = useState([]);
   const [newProjectName, setNewProjectName] = useState("");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
   
   const [memberSearch, setMemberSearch] = useState("");
   const [newMemberName, setNewMemberName] = useState("");
@@ -44,6 +48,17 @@ export default function Dashboard({ user }) {
     return () => unsubscribe();
   }, [selectedProject]);
 
+  // Balance Calculations
+  const onlineIn = transactions.filter(t => t.type === "in" && t.method === "online").reduce((sum, t) => sum + t.amount, 0);
+  const cashIn = transactions.filter(t => t.type === "in" && t.method === "cash").reduce((sum, t) => sum + t.amount, 0);
+  const onlineOut = transactions.filter(t => t.type === "out" && t.method === "online").reduce((sum, t) => sum + t.amount, 0);
+  const cashOut = transactions.filter(t => t.type === "out" && t.method === "cash").reduce((sum, t) => sum + t.amount, 0);
+
+  const remainingOnline = onlineIn - onlineOut;
+  const remainingCash = cashIn - cashOut;
+  const totalRemaining = remainingOnline + remainingCash;
+  const totalOut = onlineOut + cashOut;
+
   const createProject = async (e) => {
     e.preventDefault();
     if (!newProjectName.trim()) return;
@@ -56,17 +71,35 @@ export default function Dashboard({ user }) {
   };
 
   const handleTransaction = async (type) => {
-    if (!amount || Number(amount) <= 0) return;
-    if (type === "out" && !selectedMember) {
-      alert("Please select a member for withdrawal.");
+    setErrorMessage("");
+    const numAmount = parseFloat(amount);
+
+    if (!amount || isNaN(numAmount) || numAmount <= 0) {
+      setErrorMessage("Please enter a valid positive amount.");
       return;
+    }
+
+    if (type === "out") {
+      if (!selectedMember) {
+        setErrorMessage("Please select a member for withdrawal.");
+        return;
+      }
+
+      // CONSTRAINT CHECK: Prevent over-withdrawing past available balance
+      const currentAvailable = method === "cash" ? remainingCash : remainingOnline;
+      if (numAmount > currentAvailable) {
+        setErrorMessage(
+          `Withdrawal failed! Requested amount ($${numAmount.toFixed(2)}) exceeds remaining ${method.toUpperCase()} balance ($${currentAvailable.toFixed(2)}).`
+        );
+        return;
+      }
     }
 
     await addDoc(collection(db, "transactions"), {
       projectId: selectedProject.id,
       type,
       method,
-      amount: parseFloat(amount),
+      amount: numAmount,
       memberName: type === "out" ? selectedMember : null,
       createdAt: new Date().toISOString()
     });
@@ -93,83 +126,78 @@ export default function Dashboard({ user }) {
     link.click();
   };
 
-  const onlineIn = transactions.filter(t => t.type === "in" && t.method === "online").reduce((sum, t) => sum + t.amount, 0);
-  const cashIn = transactions.filter(t => t.type === "in" && t.method === "cash").reduce((sum, t) => sum + t.amount, 0);
-  const onlineOut = transactions.filter(t => t.type === "out" && t.method === "online").reduce((sum, t) => sum + t.amount, 0);
-  const cashOut = transactions.filter(t => t.type === "out" && t.method === "cash").reduce((sum, t) => sum + t.amount, 0);
-
-  const remainingOnline = onlineIn - onlineOut;
-  const remainingCash = cashIn - cashOut;
-  const totalRemaining = remainingOnline + remainingCash;
-  const totalOut = onlineOut + cashOut;
-
   const filteredMembers = members.filter(m => m.toLowerCase().includes(memberSearch.toLowerCase()));
 
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-800 pb-12">
-      {/* Top Mobile-Responsive Navigation Bar */}
-      <header className="bg-white border-b sticky top-0 z-30 shadow-sm">
-        <div className="max-w-6xl mx-auto px-4 py-3 flex justify-between items-center">
-          <div className="flex items-center gap-2">
-            <Wallet className="text-blue-600" size={24} />
-            <span className="font-bold text-lg md:text-xl tracking-tight">CashRecord</span>
+    <div className="min-h-screen bg-zinc-100 text-zinc-900 font-sans pb-16">
+      {/* Black Header Navbar */}
+      <header className="bg-black text-white sticky top-0 z-30 shadow-md">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex justify-between items-center">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-white text-black rounded-xl">
+              <Wallet size={20} />
+            </div>
+            <div>
+              <span className="font-bold text-lg tracking-tight block">CashRecord</span>
+            </div>
           </div>
 
           <div className="hidden md:flex items-center gap-4">
-            <span className="text-sm font-medium text-gray-600">User: <strong>{username}</strong></span>
+            <span className="text-xs text-zinc-400">User: <strong className="text-white capitalize">{username}</strong></span>
             <button 
               onClick={() => auth.signOut()} 
-              className="flex items-center gap-1 bg-red-50 text-red-600 hover:bg-red-100 px-3 py-1.5 rounded-lg text-sm font-semibold transition"
+              className="flex items-center gap-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition"
             >
-              <LogOut size={16} /> Logout
+              <LogOut size={14} /> Logout
             </button>
           </div>
 
-          {/* Mobile Menu Toggle Button */}
           <button 
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="md:hidden p-2 rounded-lg text-gray-600 hover:bg-gray-100"
+            className="md:hidden p-2 rounded-lg text-zinc-400 hover:bg-zinc-800"
           >
             {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
           </button>
         </div>
 
-        {/* Mobile Dropdown Menu */}
         {mobileMenuOpen && (
-          <div className="md:hidden bg-white border-b px-4 py-3 space-y-3">
-            <div className="text-sm text-gray-600">Logged in as: <strong>{username}</strong></div>
+          <div className="md:hidden bg-zinc-900 border-t border-zinc-800 px-4 py-4 space-y-3">
+            <div className="text-xs text-zinc-400">Signed in as: <strong className="text-white capitalize">{username}</strong></div>
             <button 
               onClick={() => auth.signOut()} 
-              className="w-full flex items-center justify-center gap-2 bg-red-600 text-white py-2 rounded-lg font-semibold"
+              className="w-full flex items-center justify-center gap-2 bg-zinc-800 text-white py-2 rounded-lg text-xs font-semibold"
             >
-              <LogOut size={18} /> Logout
+              <LogOut size={16} /> Logout
             </button>
           </div>
         )}
       </header>
 
-      <main className="max-w-6xl mx-auto px-3 sm:px-6 pt-6 space-y-6">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 pt-6 space-y-6">
         
-        {/* Project Selector & Add Project Section */}
-        <section className="bg-white p-4 sm:p-5 rounded-xl border shadow-sm flex flex-col md:flex-row gap-4 justify-between items-stretch md:items-center">
+        {/* Project Selector Bar */}
+        <section className="bg-white p-4 sm:p-5 rounded-2xl border border-zinc-200 shadow-sm flex flex-col md:flex-row gap-4 justify-between items-stretch md:items-center">
           <form onSubmit={createProject} className="flex flex-1 gap-2">
-            <input
-              type="text"
-              placeholder="New Project Name"
-              className="flex-1 border border-gray-300 px-3 py-2 rounded-lg text-base focus:ring-2 focus:ring-blue-500 focus:outline-none"
-              value={newProjectName}
-              onChange={(e) => setNewProjectName(e.target.value)}
-            />
-            <button className="bg-blue-600 text-white px-4 py-2 rounded-lg font-semibold flex items-center justify-center gap-1 hover:bg-blue-700 active:scale-95 transition">
-              <Plus size={20} /> <span className="hidden sm:inline">Add Project</span>
+            <div className="relative flex-1">
+              <FolderPlus size={18} className="absolute left-3 top-3 text-zinc-400" />
+              <input
+                type="text"
+                placeholder="New project name..."
+                className="w-full border border-zinc-200 pl-10 pr-3 py-2 rounded-xl text-sm focus:ring-2 focus:ring-black focus:outline-none bg-zinc-50/50"
+                value={newProjectName}
+                onChange={(e) => setNewProjectName(e.target.value)}
+              />
+            </div>
+            <button className="bg-black text-white px-5 py-2 rounded-xl font-semibold text-sm flex items-center justify-center gap-1.5 hover:bg-zinc-800 transition">
+              <Plus size={16} /> <span>Create</span>
             </button>
           </form>
 
           {projects.length > 0 && (
             <div className="flex items-center gap-2">
-              <label className="text-sm font-semibold whitespace-nowrap">Active Project:</label>
+              <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider whitespace-nowrap">Project:</label>
               <select 
-                className="w-full md:w-auto border border-gray-300 p-2 rounded-lg text-base bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                className="w-full md:w-auto border border-zinc-200 px-3 py-2 rounded-xl text-sm font-semibold bg-white focus:ring-2 focus:ring-black focus:outline-none shadow-sm cursor-pointer"
                 value={selectedProject?.id || ""}
                 onChange={(e) => setSelectedProject(projects.find(p => p.id === e.target.value))}
               >
@@ -181,124 +209,161 @@ export default function Dashboard({ user }) {
 
         {selectedProject ? (
           <>
-            {/* Project Header Bar */}
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-white p-4 rounded-xl border shadow-sm">
-              <h2 className="text-xl sm:text-2xl font-bold text-gray-900">{selectedProject.name}</h2>
+            {/* Project Header */}
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-white p-5 rounded-2xl border border-zinc-200 shadow-sm">
+              <div>
+                <span className="text-xs font-bold uppercase tracking-wider text-zinc-400">Active Record</span>
+                <h2 className="text-2xl font-black text-black tracking-tight">{selectedProject.name}</h2>
+              </div>
               <div className="flex w-full sm:w-auto gap-2">
                 <button 
                   onClick={() => exportCSV(transactions, `${selectedProject.name}_Transactions`)}
-                  className="flex-1 sm:flex-initial bg-gray-800 text-white px-3 py-2 rounded-lg flex items-center justify-center gap-1 text-sm font-medium hover:bg-black transition"
+                  className="flex-1 sm:flex-initial bg-zinc-900 text-white px-4 py-2 rounded-xl flex items-center justify-center gap-1.5 text-xs font-bold hover:bg-black transition"
                 >
-                  <Download size={16} /> Export
+                  <Download size={14} /> Export CSV
                 </button>
                 <button 
                   onClick={async () => {
-                    if (confirm("Delete this project?")) {
+                    if (confirm(`Delete ${selectedProject.name}?`)) {
                       await deleteDoc(doc(db, "projects", selectedProject.id));
                       setSelectedProject(null);
                     }
                   }}
-                  className="bg-red-50 text-red-600 hover:bg-red-100 px-3 py-2 rounded-lg flex items-center justify-center gap-1 text-sm font-medium transition"
+                  className="bg-zinc-100 text-zinc-600 hover:bg-rose-50 hover:text-rose-600 border border-zinc-200 px-3 py-2 rounded-xl flex items-center justify-center gap-1 text-xs font-bold transition"
                 >
-                  <Trash2 size={16} /> Delete
+                  <Trash2 size={14} /> Delete
                 </button>
               </div>
             </div>
 
-            {/* Top Balance Cards Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
-              <div className="bg-blue-50 border border-blue-200 p-4 sm:p-5 rounded-xl">
-                <h3 className="text-xs sm:text-sm font-semibold text-blue-800 uppercase tracking-wide">Total Remaining</h3>
-                <p className="text-2xl sm:text-3xl font-extrabold text-blue-900 mt-1">${totalRemaining.toFixed(2)}</p>
-                <div className="text-xs text-blue-700 mt-2 font-medium">
-                  Online: ${remainingOnline.toFixed(2)} | Cash: ${remainingCash.toFixed(2)}
+            {/* Error Alert */}
+            {errorMessage && (
+              <div className="bg-rose-50 border-l-4 border-rose-600 p-4 rounded-xl flex items-start gap-3 shadow-sm">
+                <AlertCircle className="text-rose-600 shrink-0 mt-0.5" size={18} />
+                <div className="flex-1 text-xs font-bold text-rose-900">{errorMessage}</div>
+                <button onClick={() => setErrorMessage("")} className="text-rose-500 hover:text-rose-800 font-bold">✕</button>
+              </div>
+            )}
+
+            {/* Summary Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              {/* Total Balance Card (Black) */}
+              <div className="bg-black text-white p-5 rounded-2xl shadow-md">
+                <div className="text-xs font-bold uppercase tracking-wider text-zinc-400">Total Net Balance</div>
+                <p className="text-3xl font-black mt-2">${totalRemaining.toFixed(2)}</p>
+                <div className="mt-3 pt-3 border-t border-zinc-800 text-xs text-zinc-400 flex justify-between font-mono">
+                  <span>Cash: ${remainingCash.toFixed(2)}</span>
+                  <span>Online: ${remainingOnline.toFixed(2)}</span>
                 </div>
               </div>
 
-              <div className="bg-emerald-50 border border-emerald-200 p-4 sm:p-5 rounded-xl">
-                <h3 className="text-xs sm:text-sm font-semibold text-emerald-800 uppercase tracking-wide">Physical In-Cash</h3>
-                <p className="text-2xl sm:text-3xl font-extrabold text-emerald-700 mt-1">${remainingCash.toFixed(2)}</p>
-                <div className="text-xs text-emerald-700 mt-2 font-medium">
-                  In: ${cashIn.toFixed(2)} | Out: ${cashOut.toFixed(2)}
+              {/* Incoming Funds Card (Green accent) */}
+              <div className="bg-white border-2 border-emerald-500/20 p-5 rounded-2xl shadow-sm">
+                <div className="flex justify-between items-center text-emerald-600">
+                  <span className="text-xs font-bold uppercase tracking-wider">Physical Cash</span>
+                  <ArrowDownLeft size={18} />
+                </div>
+                <p className="text-3xl font-black text-black mt-2">${remainingCash.toFixed(2)}</p>
+                <div className="mt-3 pt-3 border-t border-zinc-100 text-xs font-medium flex justify-between">
+                  <span className="text-emerald-600 font-bold">In: +${cashIn.toFixed(2)}</span>
+                  <span className="text-rose-600 font-bold">Out: -${cashOut.toFixed(2)}</span>
                 </div>
               </div>
 
-              <div className="bg-rose-50 border border-rose-200 p-4 sm:p-5 rounded-xl">
-                <h3 className="text-xs sm:text-sm font-semibold text-rose-800 uppercase tracking-wide">Total Out-Cash</h3>
-                <p className="text-2xl sm:text-3xl font-extrabold text-rose-700 mt-1">${totalOut.toFixed(2)}</p>
-                <div className="text-xs text-rose-700 mt-2 font-medium">
-                  Online: ${onlineOut.toFixed(2)} | Physical: ${cashOut.toFixed(2)}
+              {/* Outgoing Funds Card (Red accent) */}
+              <div className="bg-white border-2 border-rose-500/20 p-5 rounded-2xl shadow-sm">
+                <div className="flex justify-between items-center text-rose-600">
+                  <span className="text-xs font-bold uppercase tracking-wider">Total Outgoing</span>
+                  <ArrowUpRight size={18} />
+                </div>
+                <p className="text-3xl font-black text-black mt-2">${totalOut.toFixed(2)}</p>
+                <div className="mt-3 pt-3 border-t border-zinc-100 text-xs text-zinc-500 font-medium flex justify-between">
+                  <span>Physical: ${cashOut.toFixed(2)}</span>
+                  <span>Online: ${onlineOut.toFixed(2)}</span>
                 </div>
               </div>
             </div>
 
-            {/* Action Area: Add & Withdraw Cash */}
-            <div className="bg-white p-4 sm:p-6 rounded-xl border shadow-sm grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Transaction Controls */}
+            <div className="bg-white p-5 sm:p-6 rounded-2xl border border-zinc-200 shadow-sm grid grid-cols-1 md:grid-cols-2 gap-8">
               <div className="space-y-4">
-                <h3 className="font-bold text-lg text-gray-900">1. Transaction Controls</h3>
+                <h3 className="font-black text-sm uppercase tracking-wider text-black">Record Transaction</h3>
                 
-                <input 
-                  type="number" 
-                  placeholder="Amount ($)" 
-                  value={amount} 
-                  onChange={(e) => setAmount(e.target.value)}
-                  className="w-full border border-gray-300 p-3 rounded-lg text-base focus:ring-2 focus:ring-blue-500 focus:outline-none" 
-                />
+                <div>
+                  <label className="block text-xs font-bold text-zinc-400 mb-1 uppercase">Amount ($)</label>
+                  <input 
+                    type="number" 
+                    placeholder="0.00" 
+                    value={amount} 
+                    onChange={(e) => {
+                      setAmount(e.target.value);
+                      if (errorMessage) setErrorMessage("");
+                    }}
+                    className="w-full border border-zinc-200 p-3 rounded-xl text-lg font-bold text-black focus:ring-2 focus:ring-black focus:outline-none bg-zinc-50/50" 
+                  />
+                </div>
                 
-                <div className="flex gap-6 py-1">
-                  <label className="flex items-center gap-2 cursor-pointer font-medium text-sm">
-                    <input 
-                      type="radio" 
-                      value="cash" 
-                      checked={method === "cash"} 
-                      onChange={() => setMethod("cash")}
-                      className="w-4 h-4 text-blue-600" 
-                    /> Physical Cash
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer font-medium text-sm">
-                    <input 
-                      type="radio" 
-                      value="online" 
-                      checked={method === "online"} 
-                      onChange={() => setMethod("online")}
-                      className="w-4 h-4 text-blue-600" 
-                    /> Online Transfer
-                  </label>
+                <div>
+                  <label className="block text-xs font-bold text-zinc-400 mb-1.5 uppercase">Payment Method</label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setMethod("cash")}
+                      className={`py-2.5 rounded-xl font-bold text-xs border transition ${
+                        method === "cash" 
+                          ? "bg-black text-white border-black" 
+                          : "bg-white text-zinc-600 border-zinc-200 hover:bg-zinc-50"
+                      }`}
+                    >
+                      Physical Cash (${remainingCash.toFixed(2)})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setMethod("online")}
+                      className={`py-2.5 rounded-xl font-bold text-xs border transition ${
+                        method === "online" 
+                          ? "bg-black text-white border-black" 
+                          : "bg-white text-zinc-600 border-zinc-200 hover:bg-zinc-50"
+                      }`}
+                    >
+                      Online Transfer (${remainingOnline.toFixed(2)})
+                    </button>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
                   <button 
                     onClick={() => handleTransaction("in")} 
-                    className="w-full bg-emerald-600 text-white py-3 rounded-lg font-bold hover:bg-emerald-700 active:scale-95 transition"
+                    className="w-full bg-emerald-600 text-white py-3 rounded-xl font-bold text-xs tracking-wider uppercase hover:bg-emerald-700 active:scale-95 transition shadow-sm"
                   >
-                    + Add Cash
+                    + Add Funds (Green)
                   </button>
                   <button 
                     onClick={() => handleTransaction("out")} 
-                    className="w-full bg-rose-600 text-white py-3 rounded-lg font-bold hover:bg-rose-700 active:scale-95 transition"
+                    className="w-full bg-rose-600 text-white py-3 rounded-xl font-bold text-xs tracking-wider uppercase hover:bg-rose-700 active:scale-95 transition shadow-sm"
                   >
-                    - Withdraw Cash
+                    - Withdraw (Red)
                   </button>
                 </div>
               </div>
 
-              {/* Member Search & Selection */}
-              <div className="space-y-3">
-                <h3 className="font-bold text-lg text-gray-900">2. Select Member (Withdrawals)</h3>
+              {/* Member Selection */}
+              <div className="space-y-4">
+                <h3 className="font-black text-sm uppercase tracking-wider text-black">Member Selection (Withdrawals)</h3>
                 
                 <div className="relative">
-                  <Search className="absolute left-3 top-3.5 text-gray-400" size={18} />
+                  <Search className="absolute left-3 top-3.5 text-zinc-400" size={16} />
                   <input 
                     type="text" 
                     placeholder="Search member..." 
                     value={memberSearch}
                     onChange={(e) => setMemberSearch(e.target.value)}
-                    className="w-full border border-gray-300 pl-10 p-3 rounded-lg text-base focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                    className="w-full border border-zinc-200 pl-10 p-3 rounded-xl text-xs font-medium focus:ring-2 focus:ring-black focus:outline-none bg-zinc-50/50"
                   />
                 </div>
 
                 <select 
-                  className="w-full border border-gray-300 p-3 rounded-lg text-base bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  className="w-full border border-zinc-200 p-3 rounded-xl text-xs font-bold bg-white focus:ring-2 focus:ring-black focus:outline-none shadow-sm cursor-pointer"
                   value={selectedMember} 
                   onChange={(e) => setSelectedMember(e.target.value)}
                 >
@@ -307,17 +372,24 @@ export default function Dashboard({ user }) {
                     <option key={idx} value={m}>{m}</option>
                   ))}
                 </select>
+
+                <div className="p-3 bg-zinc-50 border border-zinc-200 rounded-xl text-xs text-zinc-500 font-medium">
+                  Constraint Check Active: Withdrawals cannot exceed available <strong>{method.toUpperCase()}</strong> balance.
+                </div>
               </div>
             </div>
 
-            {/* Mobile-Responsive Transactions Table */}
-            <div className="bg-white p-4 sm:p-6 rounded-xl border shadow-sm space-y-4">
-              <h3 className="font-bold text-lg text-gray-900">Recent Transactions</h3>
+            {/* Transaction Log Table */}
+            <div className="bg-white p-5 sm:p-6 rounded-2xl border border-zinc-200 shadow-sm space-y-4">
+              <div className="flex justify-between items-center">
+                <h3 className="font-black text-sm uppercase tracking-wider text-black">Transaction Log</h3>
+                <span className="text-xs bg-black text-white font-bold px-2.5 py-1 rounded-full">{transactions.length} Entries</span>
+              </div>
               
-              <div className="overflow-x-auto -mx-4 sm:mx-0">
-                <table className="w-full text-left border-collapse min-w-[500px]">
+              <div className="overflow-x-auto -mx-5 sm:mx-0">
+                <table className="w-full text-left border-collapse min-w-[550px]">
                   <thead>
-                    <tr className="bg-gray-50 text-gray-500 uppercase text-xs font-semibold border-b">
+                    <tr className="bg-zinc-100 text-zinc-500 uppercase text-[10px] font-black tracking-wider border-b border-zinc-200">
                       <th className="p-3">Type</th>
                       <th className="p-3">Method</th>
                       <th className="p-3">Amount</th>
@@ -325,21 +397,29 @@ export default function Dashboard({ user }) {
                       <th className="p-3">Date</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y text-sm">
+                  <tbody className="divide-y divide-zinc-100 text-xs font-medium">
                     {transactions.length === 0 ? (
                       <tr>
-                        <td colSpan="5" className="p-4 text-center text-gray-400">No transactions recorded yet.</td>
+                        <td colSpan="5" className="p-6 text-center text-zinc-400 font-bold">No transactions logged.</td>
                       </tr>
                     ) : (
                       transactions.map(t => (
-                        <tr key={t.id} className="hover:bg-gray-50 transition">
-                          <td className={`p-3 font-bold ${t.type === "in" ? "text-emerald-600" : "text-rose-600"}`}>
-                            {t.type === "in" ? "IN" : "OUT"}
+                        <tr key={t.id} className="hover:bg-zinc-50 transition">
+                          <td className="p-3">
+                            <span className={`px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider ${
+                              t.type === "in" 
+                                ? "bg-emerald-100 text-emerald-700" 
+                                : "bg-rose-100 text-rose-700"
+                            }`}>
+                              {t.type === "in" ? "+ INCOME" : "- OUTGOING"}
+                            </span>
                           </td>
-                          <td className="p-3 capitalize font-medium">{t.method}</td>
-                          <td className="p-3 font-semibold text-gray-900">${t.amount.toFixed(2)}</td>
-                          <td className="p-3 text-gray-700">{t.memberName || "-"}</td>
-                          <td className="p-3 text-xs text-gray-500">{new Date(t.createdAt).toLocaleDateString()}</td>
+                          <td className="p-3 capitalize font-bold text-zinc-700">{t.method}</td>
+                          <td className={`p-3 font-extrabold ${t.type === "in" ? "text-emerald-600" : "text-rose-600"}`}>
+                            {t.type === "in" ? "+" : "-"}${t.amount.toFixed(2)}
+                          </td>
+                          <td className="p-3 text-zinc-800 font-semibold">{t.memberName || "-"}</td>
+                          <td className="p-3 text-[10px] text-zinc-400 font-mono">{new Date(t.createdAt).toLocaleDateString()}</td>
                         </tr>
                       ))
                     )}
@@ -348,26 +428,29 @@ export default function Dashboard({ user }) {
               </div>
             </div>
 
-            {/* Member Management Cards */}
-            <div className="bg-white p-4 sm:p-6 rounded-xl border shadow-sm space-y-4">
-              <h3 className="font-bold text-lg text-gray-900">Manage Project Members</h3>
+            {/* Member Management */}
+            <div className="bg-white p-5 sm:p-6 rounded-2xl border border-zinc-200 shadow-sm space-y-4">
+              <div className="flex items-center gap-2">
+                <Users size={16} className="text-black" />
+                <h3 className="font-black text-sm uppercase tracking-wider text-black">Project Members</h3>
+              </div>
               
               <form onSubmit={handleAddMember} className="flex gap-2">
                 <input 
                   type="text" 
-                  placeholder="New Member Name" 
+                  placeholder="New member name..." 
                   value={newMemberName}
                   onChange={(e) => setNewMemberName(e.target.value)}
-                  className="flex-1 border border-gray-300 px-3 py-2 rounded-lg text-base focus:ring-2 focus:ring-blue-500 focus:outline-none" 
+                  className="flex-1 border border-zinc-200 px-3 py-2 rounded-xl text-xs font-medium focus:ring-2 focus:ring-black focus:outline-none bg-zinc-50/50" 
                 />
-                <button className="bg-blue-600 text-white px-4 py-2 rounded-lg font-semibold flex items-center gap-1 hover:bg-blue-700 transition whitespace-nowrap">
-                  <UserPlus size={18} /> Add
+                <button className="bg-black text-white px-4 py-2 rounded-xl font-bold text-xs flex items-center gap-1 hover:bg-zinc-800 transition">
+                  <UserPlus size={14} /> Add Member
                 </button>
               </form>
 
-              <div className="flex flex-wrap gap-2 pt-2">
+              <div className="flex flex-wrap gap-2 pt-1">
                 {members.map((m, idx) => (
-                  <div key={idx} className="flex items-center gap-2 border bg-gray-50 px-3 py-1.5 rounded-full text-sm font-medium text-gray-700">
+                  <div key={idx} className="flex items-center gap-2 border border-zinc-200 bg-zinc-50 px-3 py-1.5 rounded-full text-xs font-bold text-zinc-800">
                     <span>{m}</span>
                     <button 
                       title="Export Member Logs"
@@ -375,9 +458,9 @@ export default function Dashboard({ user }) {
                         const memberTxs = transactions.filter(t => t.memberName === m);
                         exportCSV(memberTxs, `${m}_Transactions`);
                       }}
-                      className="text-gray-400 hover:text-gray-800"
+                      className="text-zinc-400 hover:text-black transition"
                     >
-                      <Download size={14} />
+                      <Download size={12} />
                     </button>
                   </div>
                 ))}
@@ -385,8 +468,8 @@ export default function Dashboard({ user }) {
             </div>
           </>
         ) : (
-          <div className="text-center py-16 bg-white rounded-xl border border-dashed">
-            <p className="text-gray-500">No project selected. Create or select a project above to get started.</p>
+          <div className="text-center py-20 bg-white rounded-2xl border border-dashed border-zinc-300">
+            <p className="text-zinc-400 font-medium text-xs">No active project selected. Create or select a project above.</p>
           </div>
         )}
       </main>
